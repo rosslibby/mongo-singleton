@@ -5,10 +5,11 @@ const devPkg = JSON.parse(
 );
 
 (function prepare() {
-  const { devDependencies, scripts, ...rest } = devPkg;
-  console.log(`🎬 Preparing ${rest.name} for publish to NPM`);
-  console.log(`⚡️ Upgraded version ${rest.version}`);
-  const distPkg = { ...rest };
+  const distPkg = cleanPkg(devPkg);
+  const { name, version } = distPkg;
+
+  console.log(`🎬 Preparing ${name} for publish to NPM`);
+  console.log(`⚡️ Upgraded to version ${version}`);
 
   const distPkgPath = path.join(process.cwd(), 'dist', 'package.json');
   fs.writeFileSync(
@@ -16,5 +17,26 @@ const devPkg = JSON.parse(
     Buffer.from(JSON.stringify(distPkg, null, 2)),
     'utf-8',
   );
-  console.log(`✅ Finished preparing ${rest.name}`);
+  console.log(`✅ Finished preparing ${name}`);
 })();
+
+function cleanPkg(config: any): any {
+  const { name, version, main, module, types, exports, ...rest } = config;
+
+  return {
+    name,
+    version,
+    main: main.replace(/dist\//, ''),
+    module: module.replace(/dist\//, ''),
+    types: types.replace(/dist\//, ''),
+    ...rest,
+    exports: {
+      ...exports,
+      '.': {
+        ...exports['.'],
+        import: exports['.'].import.replace(/dist\//, ''),
+        require: exports['.'].require.replace(/dist\//, ''),
+      },
+    },
+  };
+}
