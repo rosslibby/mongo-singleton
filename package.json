@@ -34,19 +34,6 @@
     "type": "git",
     "url": "git+https://github.com/rosslibby/mongo-singleton.git"
   },
-  "scripts": {
-    "build:cjs": "tsc -p tsconfig.cjs.json",
-    "build:esm": "tsc -p tsconfig.esm.json",
-    "build": "yarn build:cjs && yarn build:esm",
-    "dev": "nodemon --exec ts-node src/index.ts"
-  },
-  "devDependencies": {
-    "@types/mongodb": "^4.0.7",
-    "@types/node": "^22.1.0",
-    "nodemon": "^3.1.10",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.5.4"
-  },
   "dependencies": {
     "mongodb": "^6.12.0"
   },
