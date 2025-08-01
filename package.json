@@ -1,6 +1,6 @@
 {
   "name": "@notross/mongo-singleton",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
   "types": "./dist/cjs/index.d.ts",
@@ -38,7 +38,8 @@
     "build:cjs": "tsc -p tsconfig.cjs.json",
     "build:esm": "tsc -p tsconfig.esm.json",
     "build": "yarn build:cjs && yarn build:esm",
-    "dev": "nodemon --exec ts-node src/index.ts"
+    "dev": "nodemon --exec ts-node src/index.ts",
+    "prepare": "ts-node prepare-package.ts"
   },
   "devDependencies": {
     "@types/mongodb": "^4.0.7",
