@@ -31,7 +31,7 @@ const readme = fs.readFileSync(path.join(process.cwd(), 'README.md'), 'utf-8');
 })();
 
 function cleanPkg(config: any): any {
-  const { name, version, main, module, types, exports, ...rest } = config;
+  const { name, version, main, module, types, exports, scripts, devDependencies, ...rest } = config;
 
   return {
     name,
