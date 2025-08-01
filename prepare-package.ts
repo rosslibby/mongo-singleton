@@ -3,6 +3,7 @@ import path from 'path';
 const devPkg = JSON.parse(
   fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8')
 );
+const readme = fs.readFileSync(path.join(process.cwd(), 'README.md'), 'utf-8');
 
 (function prepare() {
   const distPkg = cleanPkg(devPkg);
@@ -18,6 +19,15 @@ const devPkg = JSON.parse(
     'utf-8',
   );
   console.log(`✅ Finished preparing ${name}`);
+  console.log(`📋 Copying README`);
+
+  const distReadmePath = path.join(process.cwd(), 'dist', 'README.md');
+  fs.writeFileSync(
+    distReadmePath,
+    Buffer.from(readme),
+    'utf-8',
+  );
+  console.log(`✅ Finished copying README`);
 })();
 
 function cleanPkg(config: any): any {
