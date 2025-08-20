@@ -20,6 +20,14 @@ export type SparseConnectionProps = {
   logLevels?: string[];
 };
 
+export type ConnectionOptions = ConnectionProps |
+  SparseConnectionProps | string;
+
+export type InitClientProps = {
+  connection: ConnectionOptions;
+  database: string;
+};
+
 export enum LogLevel {
   'debug' = 'debug',
   'error' = 'error',

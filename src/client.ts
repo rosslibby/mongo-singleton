@@ -1,5 +1,11 @@
-import { Db, MongoClient, ServerApiVersion } from 'mongodb';
-import { ConnectionProps, LogLevel, SparseConnectionProps } from './types';
+import { Collection, Db, Document, MongoClient, ServerApiVersion } from 'mongodb';
+import {
+  ConnectionOptions,
+  ConnectionProps,
+  InitClientProps,
+  LogLevel,
+  SparseConnectionProps,
+} from './types';
 import { buildConnectionString, Logger } from './utils';
 
 const mongodbConfig = {
@@ -20,37 +26,46 @@ const logger = new Logger();
  *
  * Like me, it's single and looking for a connection. 💔
  */
-export default class MongoSingleton {
-  private databaseName: string;
-  private uri: string;
+export class MongoSingleton {
+  private databaseName: string = '';
+  private uri: string = 'mongodb://localhost:27017';
   public client: MongoClient | null = null;
   public database: Db | null = null;
   public status: string = 'Disconnected';
   public error?: any = null;
+  public init: (props: InitClientProps) => void = this.setup.bind(this);
+  public collection: (name: string) => Promise<Collection<Document>> = this.getCollection.bind(this);
+  public db: () => Promise<Db> = this.getDb.bind(this);
 
   /**
-   * @param connectionProps - Either a full ConnectionProps object, a SparseConnectionProps object, or a raw MongoDB URI string.
+   * @param connection - Either a full ConnectionProps object,
+   *                     a SparseConnectionProps object, or a
+   *                     raw MongoDB URI string.
    * @param database - The name of the database to operate on.
    */
 
-  constructor(
-    connectionProps: ConnectionProps | SparseConnectionProps | string,
-    database: string,
-  ) {
-    this.initializeLogging(connectionProps);
-    this.databaseName = database;
-
-    if (typeof connectionProps === 'string') {
-      this.uri = connectionProps;
-    } else {
-      this.uri = (connectionProps as SparseConnectionProps).uri ||
-        buildConnectionString(connectionProps as ConnectionProps);
+  constructor(props?: InitClientProps) {
+    if (props) {
+      this.setup(props);
     }
   }
 
-  private initializeLogging(
-    props: ConnectionProps | SparseConnectionProps | string,
-  ): void {
+  private setup({ connection, database }: InitClientProps = {
+    connection: 'mongodb://localhost:27017',
+    database: '',
+  }): void {
+    this.initializeLogging(connection);
+    this.databaseName = database;
+
+    if (typeof connection === 'string') {
+      this.uri = connection;
+    } else {
+      this.uri = (connection as SparseConnectionProps).uri ||
+        buildConnectionString(connection as ConnectionProps);
+    }
+  }
+
+  private initializeLogging(props: ConnectionOptions): void {
     const logging = typeof props === 'object'
       ? props.logging ?? true
       : true;
@@ -76,7 +91,7 @@ export default class MongoSingleton {
     return this.database;
   }
 
-  private getDb(client: MongoClient): Db {
+  private _getDb(client: MongoClient): Db {
     return this.database || this.initializeDatabase(client);
   }
 
@@ -95,7 +110,7 @@ export default class MongoSingleton {
     if (this.client) {
       return {
         client: this.client,
-        database: this.getDb(this.client),
+        database: this._getDb(this.client),
       };
     }
 
@@ -148,7 +163,7 @@ export default class MongoSingleton {
     });
     return {
       client: this.client,
-      database: this.getDb(this.client),
+      database: this._getDb(this.client),
     };
   }
 
@@ -173,4 +188,22 @@ export default class MongoSingleton {
       logger.warn(this.status);
     }
   }
+
+  public async getDb(): Promise<Db> {
+    const { database } = await this.connect();
+    return database;
+  }
+
+  public async getCollection(
+    name: string,
+    callback?: (...args: any[]) => Promise<any>,
+  ): Promise<Collection<Document>> {
+    const database = await this.db();
+    const collection = database.collection(name);
+    return collection;
+  }
 }
+
+export const mongoClient = new MongoSingleton();
+export const getDb = mongoClient.db;
+export const collection = mongoClient.collection;
