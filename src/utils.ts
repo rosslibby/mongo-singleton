@@ -1,4 +1,4 @@
-import { ConnectionProps } from '../types';
+import { ConnectionProps } from './types';
 
 /**
  * Builds a MongoDB connection string from granular connection properties.

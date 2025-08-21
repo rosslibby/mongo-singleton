@@ -12,33 +12,66 @@ yarn add @notross/mongo-singleton
 
 ## Quick start
 
-```typescript
-// database.ts
-import MongoSingleton from '@notross/mongo-singleton';
+### Mongo Singleton Client
+
+```ts
+// Initialize Mongo Singleton
+import { getDb, mongoClient } from '@notross/mongo-singleton';
 
 const mongoURI = 'mongodb://username:password@localhost:27017';
 const databaseName = 'admin';
 
-export const mongoClient = new MongoSingleton(mongoURI, databaseName);
+mongoClient.init({
+  connection: mongoURI,
+  database: databaseName,
+});
+
+// Use the standard MongoDB NPM package functions
+
+async function getAccountById(_id: ObjectId) {
+  const database = await getDb();
+  const collection = database.collection('accounts');
+  const account = await collection.findOne({ _id });
+  return account;
+}
+```
+
+You can use the `collection` client on its own.
+
+```ts
+import { collection } from '@notross/mongo-singleton';
+
+const pendingOrders = collection('orders').then(
+  (orders) => orders.find({ status: 'pending' }).toArray()
+);
 ```
 
 Then, in other files:
 
 ```typescript
 // account.ts
-import { mongoClient } from './database';
+import { getDb } from '@notross/mongo-singleton';
 
 async function getAccountById(_id: ObjectId) {
-  const { database } = await mongoClient.connect();
+  const database = await getDb();
   return database.collection('accounts').findOne({ _id });
+}
+
+// or
+
+import { collection } from '@notross/mongo-singleton';
+
+async function getAccountById(_id: ObjectId) {
+  return collection('accounts').then((accounts) => {
+    return accounts.findOne({ _id });
+  });
 }
 ```
 
 > Note:
-> - Calling `connect()` multiple times reuses the same connection.
-> - Export your MongoSingleton instance to maintain a single shared connection.
+> - Calling `connect()`, `getDb()` or `collection(...)` multiple times reuses the same connection.
 
-## Usage Patterns
+<!-- ## Usage Patterns
 
 ### 1. Export the MongoSingleton instance (recommended)
 
@@ -46,7 +79,7 @@ Keeps connection logic centralized:
 
 ```typescript
 /** database.ts */
-import MongoSingleton from '@notross/mongo-singleton';
+import { MongoSingleton } from '@notross/mongo-singleton';
 
 export const mongoClient = new MongoSingleton(
   'mongodb://username:password@localhost:27017',
@@ -84,7 +117,7 @@ mongoClient.connect().then(({ client: c, database: db }) => {
   client = c;
   database = db;
 });
-```
+``` -->
 
 ## API
 

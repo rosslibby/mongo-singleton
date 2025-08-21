@@ -1,8 +1,8 @@
 {
   "name": "@notross/mongo-singleton",
-  "version": "0.0.3",
-  "main": "dist/cjs/index.js",
-  "module": "dist/esm/index.js",
+  "version": "1.0.2",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
   "types": "./dist/cjs/index.d.ts",
   "keywords": [
     "mongodb",
@@ -49,13 +49,14 @@
     "typescript": "^5.5.4"
   },
   "dependencies": {
+    "@notross/node-client-logger": "^0.0.2",
     "mongodb": "^6.12.0"
   },
   "exports": {
     ".": {
       "import": "./dist/esm/index.js",
-      "require": "./dist/cjs/index.js"
+      "require": "./dist/cjs/index.js",
+      "types": "./dist/cjs/index.d.ts"
     }
-  },
-  "type": "module"
+  }
 }
