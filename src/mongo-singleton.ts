@@ -22,7 +22,7 @@ import { buildConnectionString } from './utils';
  * Like me, it's single and looking for a connection. 💔
  */
 export class MongoSingleton {
-  private config: mongodb.MongoClientOptions;
+  private config: mongodb.MongoClientOptions = defaultConfig;
   private databaseName: string = '';
   private uri: string = 'mongodb://localhost:27017';
   public client: mongodb.MongoClient | null = null;
