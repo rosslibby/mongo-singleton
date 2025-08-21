@@ -1,6 +1,6 @@
 {
   "name": "@notross/mongo-singleton",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/cjs/index.d.ts",
@@ -49,6 +49,7 @@
     "typescript": "^5.5.4"
   },
   "dependencies": {
+    "@notross/node-client-logger": "^0.0.2",
     "mongodb": "^6.12.0"
   },
   "exports": {

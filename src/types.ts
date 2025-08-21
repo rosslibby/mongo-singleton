@@ -1,3 +1,5 @@
+import * as mongodb from 'mongodb';
+
 /**
  * Full connection properties used to build the MongoDB URI.
  */
@@ -26,31 +28,17 @@ export type ConnectionOptions = ConnectionProps |
 export type InitClientProps = {
   connection: ConnectionOptions;
   database: string;
+  config?: mongodb.MongoClientOptions;
 };
 
-export enum LogLevel {
-  'debug' = 'debug',
-  'error' = 'error',
-  'info' = 'info',
-  'log' = 'log',
-  'warn' = 'warn',
-};
-
-export type LogResult = {
-  level: string;
-  message: string;
-  args: any[];
-};
-
-export type LoggerCallback = (args: LogResult) => void;
-
-export type LogMethod = (...args: any[]) => void;
-
-export type CustomLogger = {
-  debug: LogMethod;
-  error: LogMethod;
-  info: LogMethod;
-  log: LogMethod;
-  warn: LogMethod;
-  logs: LogResult[];
-};
+export type SingletonClient = mongodb.MongoClient | null;
+export type InitClient = (
+  props: InitClientProps,
+) => void;
+export type SetConfig = (
+  config: mongodb.MongoClientOptions,
+) => void;
+export type GetCollection = (
+  name: string,
+) => Promise<mongodb.Collection<mongodb.Document>>;
+export type GetDb = () => Promise<mongodb.Db>;
