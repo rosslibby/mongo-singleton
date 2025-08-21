@@ -12,8 +12,6 @@ yarn add @notross/mongo-singleton
 
 ## Quick start
 
-[-- start copy]
-
 ### Mongo Singleton Client
 
 ```ts
