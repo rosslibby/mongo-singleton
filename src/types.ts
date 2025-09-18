@@ -1,5 +1,7 @@
 import * as mongodb from 'mongodb';
+import { MongoSingleton } from './mongo-singleton';
 
+export { mongodb };
 /**
  * Full connection properties used to build the MongoDB URI.
  */
@@ -31,6 +33,11 @@ export type InitClientProps = {
   config?: mongodb.MongoClientOptions;
 };
 
+export type UseClientResponse = {
+  client: MongoSingleton;
+  collection: GetCollection;
+  db: GetDatabase;
+};
 export type SingletonClient = mongodb.MongoClient | null;
 export type InitClient = (
   props: InitClientProps,
@@ -41,7 +48,5 @@ export type SetConfig = (
 export type GetCollection = (
   name: string,
 ) => mongodb.Collection<mongodb.Document>;
-export type GetCollectionPromise = (
-  name: string,
-) => Promise<mongodb.Collection<mongodb.Document>>;
-export type GetDb = () => Promise<mongodb.Db>;
+export type ConnectAndGetDb = () => Promise<mongodb.Db>;
+export type GetDatabase = (client: mongodb.MongoClient) => mongodb.Db;

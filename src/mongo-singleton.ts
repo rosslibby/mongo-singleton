@@ -1,11 +1,11 @@
 import * as mongodb from 'mongodb';
 import { logger, LogLevel } from '@notross/node-client-logger';
 import {
+  ConnectAndGetDb,
   ConnectionOptions,
   ConnectionProps,
   GetCollection,
-  GetCollectionPromise,
-  GetDb,
+  GetDatabase,
   InitClient,
   InitClientProps,
   SetConfig,
@@ -31,9 +31,9 @@ export class MongoSingleton {
   public status: string = 'Disconnected';
   public error?: any = null;
   public init: InitClient;
-  public _collection: GetCollection;
-  public collection: GetCollectionPromise;
-  public db: GetDb;
+  public collection: GetCollection;
+  public connectedDb: ConnectAndGetDb;
+  public db: GetDatabase;
   public configure: SetConfig;
 
   /**
@@ -48,10 +48,10 @@ export class MongoSingleton {
       this.setup(props);
     }
     this.setConfig(props?.config);
-    this._collection = this._getCollection.bind(this);
     this.collection = this.getCollection.bind(this);
     this.configure = this.setConfig.bind(this);
-    this.db = this.getDb.bind(this);
+    this.connectedDb = this.getDb.bind(this);
+    this.db = this._getDb.bind(this);
     this.init = this.setup.bind(this);
   }
 
@@ -71,6 +71,8 @@ export class MongoSingleton {
     if (config) {
       this.setConfig(config);
     }
+
+    this.initializeClient();
   }
 
   private setConfig(
@@ -96,21 +98,18 @@ export class MongoSingleton {
       return this.client;
     }
 
-    const client = new mongodb.MongoClient(this.uri, this.config);
-    return client;
+    this.client = new mongodb.MongoClient(this.uri, this.config);
+    return this.client;
   }
 
-  private initializeDatabase(
-    client: mongodb.MongoClient,
-  ): mongodb.Db {
+  private initializeDatabase(): mongodb.Db {
+    const client = this.client as mongodb.MongoClient;
     this.database = client.db(this.databaseName);
     return this.database;
   }
 
-  private _getDb(
-    client: mongodb.MongoClient,
-  ): mongodb.Db {
-    return this.database || this.initializeDatabase(client);
+  public _getDb(): mongodb.Db {
+    return this.database || this.initializeDatabase();
   }
 
   /**
@@ -128,60 +127,58 @@ export class MongoSingleton {
     if (this.client) {
       return {
         client: this.client,
-        database: this._getDb(this.client),
+        database: this._getDb(),
       };
     }
 
-    this.client = this.initializeClient();
-    await this.client.connect().then(
-      (client) => this.initializeDatabase(client)
-    );
+    const client = this.initializeClient();
+    await client.connect().then(() => this.initializeDatabase());
 
-    this.client.on('connectionReady', () => {
+    client.on('connectionReady', () => {
       this.status = 'MongoDB connection is ready';
       logger.log(this.status);
     });
-    this.client.on('close', () => {
+    client.on('close', () => {
       this.status = 'MongoDB connection closed';
       logger.log(this.status);
     });
-    this.client.on('error', (err) => {
+    client.on('error', (err) => {
       this.status = 'MongoDB connection error';
       this.error = err;
       logger.error(this.status, err);
     });
-    this.client.on('reconnect', () => {
+    client.on('reconnect', () => {
       this.status = 'MongoDB reconnected';
       logger.log(this.status);
     });
-    this.client.on('reconnectFailed', () => {
+    client.on('reconnectFailed', () => {
       this.status = 'MongoDB reconnection failed';
       logger.error(this.status);
     });
-    this.client.on('timeout', () => {
+    client.on('timeout', () => {
       this.status = 'MongoDB connection timed out';
       logger.error(this.status);
     });
-    this.client.on('serverHeartbeatFailed', (err) => {
+    client.on('serverHeartbeatFailed', (err) => {
       this.status = 'MongoDB server heartbeat failed:';
       this.error = err;
       logger.error(this.status, this.error);
     });
-    this.client.on('serverHeartbeatSucceeded', () => {
+    client.on('serverHeartbeatSucceeded', () => {
       this.status = 'MongoDB server heartbeat succeeded';
       logger.log(this.status);
     });
-    this.client.on('serverClosed', () => {
+    client.on('serverClosed', () => {
       this.status = 'MongoDB server closed';
       logger.log(this.status);
     });
-    this.client.on('serverOpening', () => {
+    client.on('serverOpening', () => {
       this.status = 'MongoDB server opening';
       logger.log(this.status);
     });
     return {
-      client: this.client,
-      database: this._getDb(this.client),
+      client: client,
+      database: this._getDb(),
     };
   }
 
@@ -212,17 +209,10 @@ export class MongoSingleton {
     return database;
   }
 
-  public _getCollection(
+  public getCollection(
     name: string,
   ): mongodb.Collection<mongodb.Document> {
-    return this.database!.collection(name);
-  }
-
-  public async getCollection(
-    name: string,
-  ): Promise<mongodb.Collection<mongodb.Document>> {
-    const database = await this.db();
-    const collection = database.collection(name);
-    return collection;
+    const database = this._getDb();
+    return database.collection(name);
   }
 }
