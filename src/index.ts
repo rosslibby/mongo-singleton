@@ -1,4 +1,5 @@
 import { MongoSingleton } from './mongo-singleton';
+import { useClient } from './clients';
 
 const mongoClient = new MongoSingleton();
 const db = mongoClient.db;
@@ -14,5 +15,6 @@ export {
   getDb,
   mongoClient,
   MongoSingleton,
+  useClient,
 };
 export * from './types';

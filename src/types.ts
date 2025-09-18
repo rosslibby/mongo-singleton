@@ -1,4 +1,5 @@
 import * as mongodb from 'mongodb';
+import { MongoSingleton } from './mongo-singleton';
 
 export { mongodb };
 /**
@@ -32,6 +33,11 @@ export type InitClientProps = {
   config?: mongodb.MongoClientOptions;
 };
 
+export type UseClientResponse = {
+  client: MongoSingleton;
+  collection: GetCollection;
+  db: GetDatabase;
+};
 export type SingletonClient = mongodb.MongoClient | null;
 export type InitClient = (
   props: InitClientProps,
