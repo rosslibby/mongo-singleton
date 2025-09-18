@@ -1,10 +1,11 @@
 import * as mongodb from 'mongodb';
 import { logger, LogLevel } from '@notross/node-client-logger';
 import {
+  ConnectAndGetDb,
   ConnectionOptions,
   ConnectionProps,
   GetCollection,
-  GetDb,
+  GetDatabase,
   InitClient,
   InitClientProps,
   SetConfig,
@@ -31,7 +32,8 @@ export class MongoSingleton {
   public error?: any = null;
   public init: InitClient;
   public collection: GetCollection;
-  public db: GetDb;
+  public connectedDb: ConnectAndGetDb;
+  public db: GetDatabase;
   public configure: SetConfig;
 
   /**
@@ -48,7 +50,8 @@ export class MongoSingleton {
     this.setConfig(props?.config);
     this.collection = this.getCollection.bind(this);
     this.configure = this.setConfig.bind(this);
-    this.db = this.getDb.bind(this);
+    this.connectedDb = this.getDb.bind(this);
+    this.db = this._getDb.bind(this);
     this.init = this.setup.bind(this);
   }
 
@@ -104,7 +107,7 @@ export class MongoSingleton {
     return this.database;
   }
 
-  private _getDb(
+  public _getDb(
     client: mongodb.MongoClient,
   ): mongodb.Db {
     return this.database || this.initializeDatabase(client);

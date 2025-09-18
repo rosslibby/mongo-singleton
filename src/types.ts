@@ -41,4 +41,5 @@ export type SetConfig = (
 export type GetCollection = (
   name: string,
 ) => mongodb.Collection<mongodb.Document>;
-export type GetDb = () => Promise<mongodb.Db>;
+export type ConnectAndGetDb = () => Promise<mongodb.Db>;
+export type GetDatabase = (client: mongodb.MongoClient) => mongodb.Db;
