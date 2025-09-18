@@ -1,5 +1,6 @@
 import * as mongodb from 'mongodb';
 
+export { mongodb };
 /**
  * Full connection properties used to build the MongoDB URI.
  */

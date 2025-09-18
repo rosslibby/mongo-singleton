@@ -15,3 +15,4 @@ export {
   mongoClient,
   MongoSingleton,
 };
+export * from './types';
