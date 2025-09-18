@@ -1,6 +1,18 @@
 # @notross/mongo-singleton
 
-A lightweight, zero-fuss way to get a **single shared MongoDB connection** across your Node.js codebase. Like me, it’s single and looking for a connection. 💔
+A lightweight, opinionated wrapper for the official mongodb driver that makes working with singletons and multiple clients simple, safe, and ergonomic.
+
+## Key Features
+- ✅ Works with both connection URIs and full MongoClientOptions
+- ✅ Support for multiple named clients (useClient)
+- ✅ Ensures a single shared connection
+- ✅ Optional built-in logging with configurable log levels
+- ✅ TypeScript support out of the box
+- ✅ Easy singleton setup with no boilerplate
+- ✅ Direct access to db and collection helpers from the package root
+- ✅ No accidental overwrites — safe client management
+
+## Installation
 
 ```bash
 # NPM
@@ -10,114 +22,149 @@ npm install @notross/mongo-singleton
 yarn add @notross/mongo-singleton
 ```
 
-## Quick start
-
-### Mongo Singleton Client
+## TL;DR Quickstart
 
 ```ts
-// Initialize Mongo Singleton
-import { getDb, mongoClient } from '@notross/mongo-singleton';
+// index.ts
+import { mongoClient, collection } from '@notross/mongo-singleton';
 
-const mongoURI = 'mongodb://username:password@localhost:27017';
-const databaseName = 'admin';
-
-mongoClient.init({
-  connection: mongoURI,
-  database: databaseName,
+await mongoClient.init({
+  connection: { uri: process.env.MONGO_URI },
+  database: { name: 'myApp' },
 });
 
-// Use the standard MongoDB NPM package functions
-
-async function getAccountById(_id: ObjectId) {
-  const database = await getDb();
-  const collection = database.collection('accounts');
-  const account = await collection.findOne({ _id });
-  return account;
-}
+// anywhere in your app
+const user = await collection('users').findOne({ email: 'john.doe@gmail.com' });
 ```
 
-You can use the `collection` client on its own.
+## Quickstart
+
+#### 1. Import the shared client
+
+```ts
+import { mongoClient } from '@notross/mongo-singleton';
+```
+
+#### 2. Initialize it once
+
+```ts
+mongoClient.init({
+  connection: { uri: process.env.MONGO_URI },
+  database: { name: 'myApp' },
+});
+```
+
+#### 3. Use it anywhere
+
+The package root exposes direct helpers for `db` and `collection`:
 
 ```ts
 import { collection } from '@notross/mongo-singleton';
 
-const pendingOrders = collection('orders').then(
-  (orders) => orders.find({ status: 'pending' }).toArray()
-);
+const user = await collection('users').findOne({ email: 'john.doe@gmail.com' });
+console.log('Result:', user);
 ```
 
-Then, in other files:
+### Using multiple clients
 
-```typescript
-// account.ts
-import { getDb } from '@notross/mongo-singleton';
+You have two options if your app needs more than one distinct MongoDB client.
 
-async function getAccountById(_id: ObjectId) {
-  const database = await getDb();
-  return database.collection('accounts').findOne({ _id });
-}
+#### Option A: Create your own instances
 
-// or
-
-import { collection } from '@notross/mongo-singleton';
-
-async function getAccountById(_id: ObjectId) {
-  return collection('accounts').then((accounts) => {
-    return accounts.findOne({ _id });
-  });
-}
-```
-
-> Note:
-> - Calling `connect()`, `getDb()` or `collection(...)` multiple times reuses the same connection.
-
-<!-- ## Usage Patterns
-
-### 1. Export the MongoSingleton instance (recommended)
-
-Keeps connection logic centralized:
-
-```typescript
-/** database.ts */
+```ts
 import { MongoSingleton } from '@notross/mongo-singleton';
 
-export const mongoClient = new MongoSingleton(
-  'mongodb://username:password@localhost:27017',
-  'admin'
+export const clientA = new MongoSingleton({ 
+  connection: { uri: process.env.URI_A }, 
+  database: { name: 'dbA' }
+});
+
+export const clientB = new MongoSingleton({ 
+  connection: { uri: process.env.URI_B }, 
+  database: { name: 'dbB' }
+});
+```
+
+#### Option B: Use the useClient registry
+
+`useClient` ensures a single instance per client ID across your app.
+
+```ts
+import { useClient } from '@notross/mongo-singleton';
+
+// index.ts
+useClient('client-a', { connection: { uri: process.env.URI_A }, database: { name: 'dbA' } });
+useClient('client-b', { connection: { uri: process.env.URI_B }, database: { name: 'dbB' } });
+
+// auth.ts
+const { collection } = useClient('client-a');
+const account = await collection('accounts').findOne({ email, password });
+
+// orders.ts
+const { collection } = useClient('client-b');
+const orders = await collection('orders').find().toArray();
+```
+
+> ⚠️ If you call useClient('client-a') again with new props, it will not overwrite the existing client.
+> 
+> To reinitialize, explicitly call `client.init(...)`:
+
+```ts
+const { client } = useClient('client-a');
+await client.init({ connection: {...}, database: {...} });
+```
+
+## API Reference
+
+### MongoSingleton
+```ts
+new MongoSingleton(
+  props?: InitClientProps,
+  database?: string,
 );
 ```
 
-```typescript
-/** account.ts */
-import { mongoClient } from './database';
+#### Types
+```ts
+type InitClientProps = {
+  connection: ConnectionOptions;
+  database: string;
+  config?: mongodb.MongoClientOptions;
+};
 
-export async function getAccountById(_id: ObjectId) {
-  const { database } = await mongoClient.connect();
-  return database.collection('accounts').findOne({ _id });
-}
+type ConnectionOptions = ConnectionProps | SparseConnectionProps | string;
+
+type ConnectionProps = {
+  prefix: string; // e.g., "mongodb://" or "mongodb+srv://"
+  username: string;
+  password: string;
+  host: string;
+  port?: number;
+  defaultauthdb?: string;
+  authSource?: string;
+  options?: URLSearchParams;
+  logging?: boolean;
+  logLevels?: string[];
+};
+
+type SparseConnectionProps = {
+  uri: string,
+  logging?: boolean,
+  logLevels?: string[];
+};
 ```
 
-### 2. Use connect() with a callback
+Methods:
+- `init(props)` – Initialize or reinitialize the client
+- `connect()` – Manually connect (optional, usually handled for you)
+- `disconnect()` – Closes the connection and resets internal state
+- `db` – Current Db instance (after init)
+- `collection(name)` – Helper for accessing collections
 
-If you prefer an inline callback approach:
-
-```typescript
-const account = await mongoClient.connect(async ({ database }) => {
-  return database.collection('accounts').findOne({ _id });
-});
-```
-
-### 3. Manually store the client and DB (less common)
-
-```typescript
-let client: MongoClient | null = null;
-let database: Db | null = null;
-
-mongoClient.connect().then(({ client: c, database: db }) => {
-  client = c;
-  database = db;
-});
-``` -->
+Best Practices
+- Always call `init(...)` (or pass config to the constructor) before using db or collection.
+- Prefer `useClient` if you expect multiple distinct clients.
+- Use mongoClient + exported db/collection if you only need one global client.
 
 ## API
 
