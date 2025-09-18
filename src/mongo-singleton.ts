@@ -4,7 +4,6 @@ import {
   ConnectionOptions,
   ConnectionProps,
   GetCollection,
-  GetCollectionPromise,
   GetDb,
   InitClient,
   InitClientProps,
@@ -31,8 +30,7 @@ export class MongoSingleton {
   public status: string = 'Disconnected';
   public error?: any = null;
   public init: InitClient;
-  public _collection: GetCollection;
-  public collection: GetCollectionPromise;
+  public collection: GetCollection;
   public db: GetDb;
   public configure: SetConfig;
 
@@ -48,7 +46,6 @@ export class MongoSingleton {
       this.setup(props);
     }
     this.setConfig(props?.config);
-    this._collection = this._getCollection.bind(this);
     this.collection = this.getCollection.bind(this);
     this.configure = this.setConfig.bind(this);
     this.db = this.getDb.bind(this);
@@ -212,17 +209,9 @@ export class MongoSingleton {
     return database;
   }
 
-  public _getCollection(
+  public getCollection(
     name: string,
   ): mongodb.Collection<mongodb.Document> {
     return this.database!.collection(name);
-  }
-
-  public async getCollection(
-    name: string,
-  ): Promise<mongodb.Collection<mongodb.Document>> {
-    const database = await this.db();
-    const collection = database.collection(name);
-    return collection;
   }
 }
