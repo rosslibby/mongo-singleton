@@ -30,7 +30,7 @@ import { mongoClient, collection } from '@notross/mongo-singleton';
 
 await mongoClient.init({
   connection: { uri: process.env.MONGO_URI },
-  database: { name: 'myApp' },
+  database: 'myApp',
 });
 
 // anywhere in your app
@@ -50,7 +50,7 @@ import { mongoClient } from '@notross/mongo-singleton';
 ```ts
 mongoClient.init({
   connection: { uri: process.env.MONGO_URI },
-  database: { name: 'myApp' },
+  database: 'myApp',
 });
 ```
 
@@ -76,12 +76,12 @@ import { MongoSingleton } from '@notross/mongo-singleton';
 
 export const clientA = new MongoSingleton({ 
   connection: { uri: process.env.URI_A }, 
-  database: { name: 'dbA' }
+  database: 'dbA',
 });
 
 export const clientB = new MongoSingleton({ 
   connection: { uri: process.env.URI_B }, 
-  database: { name: 'dbB' }
+  database: 'dbB',
 });
 ```
 
@@ -93,8 +93,8 @@ export const clientB = new MongoSingleton({
 import { useClient } from '@notross/mongo-singleton';
 
 // index.ts
-useClient('client-a', { connection: { uri: process.env.URI_A }, database: { name: 'dbA' } });
-useClient('client-b', { connection: { uri: process.env.URI_B }, database: { name: 'dbB' } });
+useClient('client-a', { connection: { uri: process.env.URI_A }, database: 'dbA' });
+useClient('client-b', { connection: { uri: process.env.URI_B }, database: 'dbB' });
 
 // auth.ts
 const { collection } = useClient('client-a');
@@ -111,7 +111,7 @@ const orders = await collection('orders').find().toArray();
 
 ```ts
 const { client } = useClient('client-a');
-await client.init({ connection: {...}, database: {...} });
+await client.init({ connection: {...}, database: '...' });
 ```
 
 ## API Reference
@@ -165,38 +165,3 @@ Best Practices
 - Always call `init(...)` (or pass config to the constructor) before using db or collection.
 - Prefer `useClient` if you expect multiple distinct clients.
 - Use mongoClient + exported db/collection if you only need one global client.
-
-## API
-
-`new MongoSingleton(connectionProps, databaseName)`
-
-- connectionProps can be:
-  - ConnectionProps – full connection details (host, username, etc.)
-  - SparseConnectionProps – a MongoDB URI and some config options
-  - string – just a MongoDB URI
-- databaseName: The DB name to use for db.collection() calls.
-
-`.connect(): Promise<{ client: MongoClient; database: Db }>`
-
-- Connects to MongoDB if not already connected.
-- Returns the existing connection if one is already open.
-
-`.disconnect(): Promise<void>`
-
-- Closes the connection and resets internal state.
-
-## Key Features
-- ✅ Ensures a single shared connection
-- ✅ Optional built-in logging with configurable log levels
-- ✅ TypeScript support out of the box
-
-### LogLevel enum
-```typescript
-enum LogLevel {
-  'debug' = 'debug',
-  'error' = 'error',
-  'info' = 'info',
-  'log' = 'log',
-  'warn' = 'warn',
-}
-```
