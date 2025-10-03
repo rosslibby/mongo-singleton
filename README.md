@@ -29,7 +29,7 @@ yarn add @notross/mongo-singleton
 import { mongoClient, collection } from '@notross/mongo-singleton';
 
 await mongoClient.init({
-  connection: { uri: process.env.MONGO_URI },
+  connection: process.env.MONGO_URI,
   database: 'myApp',
 });
 
@@ -49,7 +49,7 @@ import { mongoClient } from '@notross/mongo-singleton';
 
 ```ts
 mongoClient.init({
-  connection: { uri: process.env.MONGO_URI },
+  connection: process.env.MONGO_URI,
   database: 'myApp',
 });
 ```
@@ -75,12 +75,12 @@ You have two options if your app needs more than one distinct MongoDB client.
 import { MongoSingleton } from '@notross/mongo-singleton';
 
 export const clientA = new MongoSingleton({ 
-  connection: { uri: process.env.URI_A }, 
+  connection: process.env.URI_A, 
   database: 'dbA',
 });
 
 export const clientB = new MongoSingleton({ 
-  connection: { uri: process.env.URI_B }, 
+  connection: process.env.URI_B, 
   database: 'dbB',
 });
 ```
@@ -93,8 +93,8 @@ export const clientB = new MongoSingleton({
 import { useClient } from '@notross/mongo-singleton';
 
 // index.ts
-useClient('client-a', { connection: { uri: process.env.URI_A }, database: 'dbA' });
-useClient('client-b', { connection: { uri: process.env.URI_B }, database: 'dbB' });
+useClient('client-a', { connection: process.env.URI_A, database: 'dbA' });
+useClient('client-b', { connection: process.env.URI_B, database: 'dbB' });
 
 // auth.ts
 const { collection } = useClient('client-a');
@@ -111,7 +111,7 @@ const orders = await collection('orders').find().toArray();
 
 ```ts
 const { client } = useClient('client-a');
-await client.init({ connection: {...}, database: '...' });
+await client.init({ connection: '...', database: '...' });
 ```
 
 ## API Reference
