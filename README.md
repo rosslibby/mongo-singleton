@@ -1,4 +1,5 @@
 # @notross/mongo-singleton
+[<img src="https://img.shields.io/npm/v/@notross/mongo-singleton" />](https://npmjs.com/package/@notross/mongo-singleton)
 
 A lightweight, opinionated wrapper for the official mongodb driver that makes working with singletons and multiple clients simple, safe, and ergonomic.
 
