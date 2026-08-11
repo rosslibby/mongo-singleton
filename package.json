@@ -1,6 +1,6 @@
 {
   "name": "@notross/mongo-singleton",
-  "version": "2.0.2",
+  "version": "3.0.0",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/cjs/index.d.ts",
@@ -22,7 +22,7 @@
     "utility",
     "reusable"
   ],
-  "description": "A lightweight, zero-fuss way to get a single shared MongoDB connection across your Node.js codebase.",
+  "description": "Zero-config, plug-and-play MongoDB client management for Node.js: shared connections, multi-client support, Pino logging, and env/config-file resolution out of the box.",
   "license": "MIT",
   "author": {
     "name": "Ross Libby",
@@ -42,15 +42,15 @@
     "prepare": "ts-node prepare-package.ts"
   },
   "devDependencies": {
-    "@types/mongodb": "^4.0.7",
     "@types/node": "^22.1.0",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"
   },
   "dependencies": {
-    "@notross/node-client-logger": "^0.0.2",
-    "mongodb": "^6.12.0"
+    "cosmiconfig": "^10.0.0",
+    "mongodb": "^6.12.0",
+    "pino": "^10.3.1"
   },
   "exports": {
     ".": {

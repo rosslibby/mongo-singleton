@@ -1,218 +1,259 @@
 import * as mongodb from 'mongodb';
-import { logger, LogLevel } from '@notross/node-client-logger';
+import type { Logger } from 'pino';
 import {
-  ConnectAndGetDb,
-  ConnectionOptions,
+  CollectionOptions,
+  ConnectionInput,
   ConnectionProps,
-  GetCollection,
-  GetDatabase,
-  InitClient,
-  InitClientProps,
-  SetConfig,
+  ConnectionStatus,
+  LazyCollection,
+  MongoSingletonOptions,
   SparseConnectionProps,
 } from './types';
-import { defaultConfig } from './config';
-import { buildConnectionString } from './utils';
+import { DEFAULT_CLIENT_OPTIONS } from './defaults';
+import { resolveDefaultConnection } from './config';
+import { buildConnectionString, extractDatabaseFromUri } from './utils';
+import { createLogger } from './logger';
+import { makeLazyCollection } from './lazy-collection';
 
 /**
  * MongoSingleton
  *
- * Manages a single, shared MongoDB connection for the application.
- * Subsequent calls to `.connect()` return the same connection.
+ * Manages a single, lazily-created, shared MongoDB connection. The driver
+ * client itself isn't constructed until the first `.collection()`, `.db()`,
+ * or `.connect()` call — not at construction time — so a zero-arg instance
+ * (as created for the package's root `mongoClient` export) can be declared
+ * at module-import time even before env vars or a config file are available.
  *
  * Like me, it's single and looking for a connection. 💔
  */
 export class MongoSingleton {
-  private config: mongodb.MongoClientOptions = defaultConfig;
-  private databaseName: string = '';
-  private uri: string = 'mongodb://localhost:27017';
-  public client: mongodb.MongoClient | null = null;
-  public database: mongodb.Db | null = null;
-  public status: string = 'Disconnected';
-  public error?: any = null;
-  public init: InitClient;
-  public collection: GetCollection;
-  public connectedDb: ConnectAndGetDb;
-  public db: GetDatabase;
-  public configure: SetConfig;
+  private uri: string | undefined;
+  private clientOptions: mongodb.MongoClientOptions = DEFAULT_CLIENT_OPTIONS;
+  private defaultDatabase: string | undefined;
+  private _client: mongodb.MongoClient | null = null;
+  private connectPromise: Promise<mongodb.MongoClient> | null = null;
+  private listenersAttached = false;
 
-  /**
-   * @param connection - Either a full ConnectionProps object,
-   *                     a SparseConnectionProps object, or a
-   *                     raw MongoDB URI string.
-   * @param database - The name of the database to operate on.
-   */
+  public log: Logger | undefined;
+  public status: ConnectionStatus = 'disconnected';
+  public error: Error | null = null;
 
-  constructor(props?: InitClientProps) {
-    if (props) {
-      this.setup(props);
-    }
-    this.setConfig(props?.config);
-    this.collection = this.getCollection.bind(this);
-    this.configure = this.setConfig.bind(this);
-    this.connectedDb = this.getDb.bind(this);
-    this.db = this._getDb.bind(this);
-    this.init = this.setup.bind(this);
-  }
-
-  private setup({ config, connection, database }: InitClientProps = {
-    connection: 'mongodb://localhost:27017',
-    database: '',
-  }): void {
-    this.initializeLogging(connection);
-    this.databaseName = database;
-    if (typeof connection === 'string') {
-      this.uri = connection;
+  constructor(opts?: MongoSingletonOptions) {
+    if (opts) {
+      this.applyOptions(opts);
     } else {
-      this.uri = (connection as SparseConnectionProps).uri ||
-        buildConnectionString(connection as ConnectionProps);
+      this.log = createLogger(undefined);
     }
-
-    if (config) {
-      this.setConfig(config);
-    }
-
-    this.initializeClient();
   }
 
-  private setConfig(
-    config: mongodb.MongoClientOptions = defaultConfig,
-  ): void {
-    this.config = config;
-  }
-
-  private initializeLogging(props: ConnectionOptions): void {
-    const logging = typeof props === 'object'
-      ? props.logging ?? true
-      : true;
-    logger.toggleLogging(logging);
-
-    const levels = typeof props === 'object'
-      ? props.logLevels ?? undefined
-      : undefined;
-    logger.setLevels(levels as LogLevel[]);
-  }
-
-  private initializeClient(): mongodb.MongoClient {
-    if (this.client) {
-      return this.client;
-    }
-
-    this.client = new mongodb.MongoClient(this.uri, this.config);
-    return this.client;
-  }
-
-  private initializeDatabase(): mongodb.Db {
-    const client = this.client as mongodb.MongoClient;
-    this.database = client.db(this.databaseName);
-    return this.database;
-  }
-
-  public _getDb(): mongodb.Db {
-    return this.database || this.initializeDatabase();
+  /** Lazily-created driver client. Accessing this never blocks on a network call. */
+  public get client(): mongodb.MongoClient {
+    return this.getOrCreateClient();
   }
 
   /**
-   * Establishes a connection to MongoDB if not already connected.
-   * If already connected, returns the existing client and database.
-   *
-   * @returns Promise resolving to the connected MongoClient and Db.
-   * @example
-   * const { client, database } = await mongoClient.connect();
+   * (Re)initializes this instance with new connection settings — the same
+   * method covers both first-time setup and reconfiguration. Safe to call on
+   * an already-initialized instance: any existing client is swapped out
+   * immediately and the stale one is closed in the background.
    */
-  public async connect(): Promise<{
+  public init = (opts: MongoSingletonOptions): void => {
+    this.applyOptions(opts);
+    this.resetClient();
+  };
+
+  /**
+   * Returns a collection handle that works three ways:
+   *
+   *   collection('users').findOne(...)                       // direct call
+   *   const users = await collection('users');                // await-to-value
+   *   collection('users').then((users) => users.findOne(...)) // .then chain
+   *
+   * All three are safe before connecting — the driver connects lazily on
+   * the first operation you run, regardless of call style.
+   */
+  public collection = <T extends mongodb.Document = mongodb.Document>(
+    name: string,
+    opts?: CollectionOptions,
+  ): LazyCollection<T> => {
+    return makeLazyCollection(this.getDatabase(opts?.database).collection<T>(name));
+  };
+
+  /** Returns a `Db` handle for `database`, or this instance's default database. */
+  public db = (database?: string): mongodb.Db => {
+    return this.getDatabase(database);
+  };
+
+  /**
+   * Explicitly waits for a connection and wires up status/event logging.
+   * Not required before using `collection()`/`db()` — the driver connects
+   * lazily on first operation regardless — but useful for pre-warming at
+   * boot or failing fast on bad credentials before serving traffic.
+   */
+  public connect = async (): Promise<{
     client: mongodb.MongoClient;
     database: mongodb.Db;
-  }> {
-    if (this.client) {
-      return {
-        client: this.client,
-        database: this._getDb(),
-      };
-    }
-
-    const client = this.initializeClient();
-    await client.connect().then(() => this.initializeDatabase());
-
-    client.on('connectionReady', () => {
-      this.status = 'MongoDB connection is ready';
-      logger.log(this.status);
-    });
-    client.on('close', () => {
-      this.status = 'MongoDB connection closed';
-      logger.log(this.status);
-    });
-    client.on('error', (err) => {
-      this.status = 'MongoDB connection error';
-      this.error = err;
-      logger.error(this.status, err);
-    });
-    client.on('reconnect', () => {
-      this.status = 'MongoDB reconnected';
-      logger.log(this.status);
-    });
-    client.on('reconnectFailed', () => {
-      this.status = 'MongoDB reconnection failed';
-      logger.error(this.status);
-    });
-    client.on('timeout', () => {
-      this.status = 'MongoDB connection timed out';
-      logger.error(this.status);
-    });
-    client.on('serverHeartbeatFailed', (err) => {
-      this.status = 'MongoDB server heartbeat failed:';
-      this.error = err;
-      logger.error(this.status, this.error);
-    });
-    client.on('serverHeartbeatSucceeded', () => {
-      this.status = 'MongoDB server heartbeat succeeded';
-      logger.log(this.status);
-    });
-    client.on('serverClosed', () => {
-      this.status = 'MongoDB server closed';
-      logger.log(this.status);
-    });
-    client.on('serverOpening', () => {
-      this.status = 'MongoDB server opening';
-      logger.log(this.status);
-    });
-    return {
-      client: client,
-      database: this._getDb(),
-    };
-  }
+  }> => {
+    const client = await this.ensureConnected();
+    return { client, database: this.getDatabase() };
+  };
 
   /**
-   * Gracefully closes the MongoDB connection and resets internal state.
-   * If no client exists, logs a warning instead.
+   * Closes the connection, if one exists, and resets internal state so the
+   * next `.collection()`/`.db()`/`.connect()` call lazily creates a fresh
+   * client rather than throwing.
    */
-  public async disconnect(): Promise<void> {
-    if (this.client) {
-      await this.client.close().then(() => {
-        this.client = null;
-        this.database = null;
-        this.status = 'Disconnected from MongoDB';
-        logger.log(this.status);
-      }).catch((err) => {
-        this.status = 'Error disconnecting from MongoDB'
-        this.error = err;
-        logger.error(this.status, err);
-      });
-    } else {
-      this.status = 'No MongoDB client to disconnect';
-      logger.warn(this.status);
+  public disconnect = async (): Promise<void> => {
+    const client = this._client;
+    if (!client) {
+      this.log?.warn('No MongoDB client to disconnect');
+      return;
+    }
+
+    this._client = null;
+    this.connectPromise = null;
+    this.listenersAttached = false;
+    this.status = 'disconnected';
+
+    try {
+      await client.close();
+      this.log?.info('Disconnected from MongoDB');
+    } catch (err) {
+      this.status = 'error';
+      this.error = err instanceof Error ? err : new Error(String(err));
+      this.log?.error({ err }, 'Error disconnecting from MongoDB');
+    }
+  };
+
+  private applyOptions(opts: MongoSingletonOptions): void {
+    this.log = createLogger(opts.logger);
+    if (opts.clientOptions) {
+      this.clientOptions = opts.clientOptions;
+    }
+    if (opts.database) {
+      this.defaultDatabase = opts.database;
+    }
+    if (opts.connection) {
+      this.uri = MongoSingleton.resolveConnectionString(opts.connection);
     }
   }
 
-  public async getDb(): Promise<mongodb.Db> {
-    const { database } = await this.connect();
-    return database;
+  private static resolveConnectionString(connection: ConnectionInput): string {
+    if (typeof connection === 'string') {
+      return connection;
+    }
+    const sparse = connection as SparseConnectionProps;
+    return sparse.uri ?? buildConnectionString(connection as ConnectionProps);
   }
 
-  public getCollection(
-    name: string,
-  ): mongodb.Collection<mongodb.Document> {
-    const database = this._getDb();
-    return database.collection(name);
+  /** Swaps out the current client (if any) for a fresh lazy slot, closing the old one in the background. */
+  private resetClient(): void {
+    const previous = this._client;
+    this._client = null;
+    this.connectPromise = null;
+    this.listenersAttached = false;
+    this.status = 'disconnected';
+
+    if (previous) {
+      void previous.close().catch((err: unknown) => {
+        this.log?.warn({ err }, 'Error closing previous MongoDB client');
+      });
+    }
+  }
+
+  /** Resolves `this.uri` from env vars / config file if it wasn't set explicitly, throwing a clear error if nothing is configured anywhere. */
+  private ensureUri(): string {
+    if (this.uri) {
+      return this.uri;
+    }
+
+    const resolved = resolveDefaultConnection();
+    if (!resolved) {
+      throw new Error(
+        'No MongoDB connection configured. Set MONGO_URI (or MONGODB_URI/MONGO_URL) and ' +
+          'MONGO_DATABASE, add a mongosingleton config file, or call mongoClient.init({ connection, database }).',
+      );
+    }
+
+    this.uri = resolved.uri;
+    this.defaultDatabase ??= resolved.database;
+    if (resolved.clientOptions && this.clientOptions === DEFAULT_CLIENT_OPTIONS) {
+      this.clientOptions = resolved.clientOptions;
+    }
+    return this.uri;
+  }
+
+  private getOrCreateClient(): mongodb.MongoClient {
+    if (!this._client) {
+      this._client = new mongodb.MongoClient(this.ensureUri(), this.clientOptions);
+    }
+    return this._client;
+  }
+
+  private getDatabase(database?: string): mongodb.Db {
+    const client = this.getOrCreateClient();
+    const name = database ?? this.defaultDatabase ?? extractDatabaseFromUri(this.uri as string);
+
+    if (!name) {
+      throw new Error(
+        'No database configured. Pass `database` to init()/collection()/db(), set MONGO_DATABASE, ' +
+          'add one to your mongosingleton config, or include it in the connection URI (mongodb://host/dbname).',
+      );
+    }
+
+    return client.db(name);
+  }
+
+  private ensureConnected(): Promise<mongodb.MongoClient> {
+    const client = this.getOrCreateClient();
+
+    if (!this.connectPromise) {
+      this.status = 'connecting';
+      this.connectPromise = client
+        .connect()
+        .then((connected) => {
+          this.status = 'connected';
+          this.error = null;
+          this.attachEventListeners(connected);
+          return connected;
+        })
+        .catch((err: unknown) => {
+          this.status = 'error';
+          this.error = err instanceof Error ? err : new Error(String(err));
+          this.connectPromise = null; // allow retry on next call
+          throw err;
+        });
+    }
+
+    return this.connectPromise;
+  }
+
+  private attachEventListeners(client: mongodb.MongoClient): void {
+    if (this.listenersAttached) {
+      return;
+    }
+    this.listenersAttached = true;
+
+    client.on('close', () => {
+      this.status = 'disconnected';
+      this.log?.info('MongoDB connection closed');
+    });
+    client.on('error', (err) => {
+      this.status = 'error';
+      this.error = err instanceof Error ? err : new Error(String(err));
+      this.log?.error({ err }, 'MongoDB connection error');
+    });
+    client.on('timeout', () => {
+      this.log?.error('MongoDB connection timed out');
+    });
+    client.on('serverHeartbeatFailed', (event) => {
+      this.log?.warn({ event }, 'MongoDB server heartbeat failed');
+    });
+    client.on('serverClosed', () => {
+      this.log?.info('MongoDB server closed');
+    });
+    client.on('serverOpening', () => {
+      this.log?.info('MongoDB server opening');
+    });
   }
 }

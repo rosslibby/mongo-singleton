@@ -6,6 +6,8 @@ Keep the goal ("plug-and-play MongoDB client management with reusable connection
 
 This is written as a from-scratch redesign, but almost none of it requires a new repo — it's a `src/` rewrite behind the same package name, released as a major version bump (breaking changes are called out explicitly).
 
+> **Note:** implementation happened in conversation after this document was written, and a few names below were refined along the way — `useClient` shipped as `getConnection` (the registry returns a *connection*, and "client" read to Ross as a per-database accessor), and the `configure(clientOptions)` method described in 3.5/3.9 was dropped as redundant with `init({ clientOptions })`, replaced by a top-level `configureMongoSingleton(opts)` for reconfiguring the default instance. Part 1's bug descriptions still refer to the actual v2 code and are accurate as written; it's Part 3's proposed-design snippets that use the pre-rename names. See `README.md` for the shipped API.
+
 ---
 
 ## Part 1: What's actually wrong with the current implementation

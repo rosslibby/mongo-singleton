@@ -1,7 +1,9 @@
 import * as mongodb from 'mongodb';
+import type { Logger } from 'pino';
 import { MongoSingleton } from './mongo-singleton';
 
 export { mongodb };
+
 /**
  * Full connection properties used to build the MongoDB URI.
  */
@@ -14,39 +16,44 @@ export type ConnectionProps = {
   defaultauthdb?: string;
   authSource?: string;
   options?: URLSearchParams;
-  logging?: boolean;
-  logLevels?: string[];
 };
 
 export type SparseConnectionProps = {
-  uri: string,
-  logging?: boolean,
-  logLevels?: string[];
+  uri: string;
 };
 
-export type ConnectionOptions = ConnectionProps |
-  SparseConnectionProps | string;
+/**
+ * Named `ConnectionInput`, not `ConnectionOptions`, deliberately: `mongodb`
+ * itself exports a public `ConnectionOptions` interface (driver-level socket
+ * options), and since this package re-exports `mongodb` too, a same-named
+ * type here would be a real, confusable collision for consumers.
+ */
+export type ConnectionInput = ConnectionProps | SparseConnectionProps | string;
 
-export type InitClientProps = {
-  connection: ConnectionOptions;
-  database: string;
-  config?: mongodb.MongoClientOptions;
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+/** A `Collection` that's also awaitable/thenable — see `MongoSingleton.collection()`. */
+export type LazyCollection<T extends mongodb.Document = mongodb.Document> = mongodb.Collection<T> &
+  PromiseLike<mongodb.Collection<T>>;
+
+/**
+ * `logger: false` disables logging entirely. Omit to get a default Pino
+ * instance; pass your app's own (or a `.child(...)` of it) to share one.
+ */
+export type MongoSingletonOptions = {
+  connection?: ConnectionInput;
+  database?: string;
+  clientOptions?: mongodb.MongoClientOptions;
+  logger?: Logger | false;
 };
 
-export type UseClientResponse = {
+export type CollectionOptions = {
+  database?: string;
+};
+
+/** Returned by `getConnection(id)`: the managed connection plus its accessor helpers. */
+export type ConnectionHandle = {
   client: MongoSingleton;
-  collection: GetCollection;
-  db: GetDatabase;
+  collection: MongoSingleton['collection'];
+  db: MongoSingleton['db'];
 };
-export type SingletonClient = mongodb.MongoClient | null;
-export type InitClient = (
-  props: InitClientProps,
-) => void;
-export type SetConfig = (
-  config: mongodb.MongoClientOptions,
-) => void;
-export type GetCollection = (
-  name: string,
-) => mongodb.Collection<mongodb.Document>;
-export type ConnectAndGetDb = () => Promise<mongodb.Db>;
-export type GetDatabase = (client: mongodb.MongoClient) => mongodb.Db;

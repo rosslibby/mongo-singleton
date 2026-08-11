@@ -1,20 +1,29 @@
 import { MongoSingleton } from './mongo-singleton';
-import { useClient } from './clients';
+import { MongoSingletonOptions } from './types';
+import { disconnectAll, getConnection } from './clients';
+import { registerShutdown as registerShutdownImpl } from './shutdown';
 
 const mongoClient = new MongoSingleton();
 const db = mongoClient.db;
-const getDb = mongoClient.connectedDb;
 const collection = mongoClient.collection;
-const configure = mongoClient.configure;
+const connect = mongoClient.connect;
+
+/** (Re)configures the default `mongoClient` singleton — the single entry point if you'd rather not rely on env vars/a config file. */
+const configureMongoSingleton = (opts: MongoSingletonOptions): void => mongoClient.init(opts);
+
+const registerShutdown = (...extra: MongoSingleton[]): void =>
+  registerShutdownImpl(mongoClient, ...extra);
 
 export default MongoSingleton;
 export {
   collection,
-  configure,
+  configureMongoSingleton,
+  connect,
   db,
-  getDb,
+  disconnectAll,
+  getConnection,
   mongoClient,
   MongoSingleton,
-  useClient,
+  registerShutdown,
 };
 export * from './types';
