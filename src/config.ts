@@ -26,10 +26,14 @@ const explorer = cosmiconfigSync('mongoSingleton');
 
 let cachedFileConfig: MongoSingletonFileConfig | null | undefined;
 
-function loadFileConfig(): MongoSingletonFileConfig | null {
+function loadFileConfig(cwd?: string): MongoSingletonFileConfig | null {
   if (cachedFileConfig === undefined) {
     try {
-      const result = explorer.search();
+      // `searchFrom` lets callers (namely tests) point at a fixture
+      // directory instead of the real `process.cwd()` — process-wide
+      // `process.chdir()` isn't safe here since vitest's threaded pool runs
+      // multiple test files in one process.
+      const result = explorer.search(cwd);
       cachedFileConfig = (result?.config as MongoSingletonFileConfig | undefined) ?? null;
     } catch {
       // Malformed config file: treat as absent rather than crashing module load.
@@ -51,8 +55,8 @@ function envKey(id: string): string {
  * not something that should be able to silently override a production
  * `MONGO_URI` injected by the deploy environment.
  */
-export function resolveDefaultConnection(): ResolvedConnection | null {
-  const file = loadFileConfig();
+export function resolveDefaultConnection(cwd?: string): ResolvedConnection | null {
+  const file = loadFileConfig(cwd);
   const uri =
     process.env.MONGO_URI ??
     process.env.MONGODB_URI ??
@@ -73,8 +77,8 @@ export function resolveDefaultConnection(): ResolvedConnection | null {
  * (id upper-cased, non-alphanumerics collapsed to `_`) — e.g. `useClient('analytics')`
  * can be overridden by `MONGO_ANALYTICS_URI`.
  */
-export function resolveNamedConnection(id: string): ResolvedConnection | null {
-  const entry = loadFileConfig()?.clients?.[id];
+export function resolveNamedConnection(id: string, cwd?: string): ResolvedConnection | null {
+  const entry = loadFileConfig(cwd)?.clients?.[id];
   const key = envKey(id);
   const uri = process.env[`MONGO_${key}_URI`] ?? entry?.uri;
   const database = process.env[`MONGO_${key}_DATABASE`] ?? entry?.database;
