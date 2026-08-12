@@ -1,9 +1,14 @@
 {
   "name": "@notross/mongo-singleton",
-  "version": "2.0.2",
-  "main": "./dist/cjs/index.js",
-  "module": "./dist/esm/index.js",
-  "types": "./dist/cjs/index.d.ts",
+  "version": "3.0.1",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "keywords": [
     "mongodb",
     "mongo",
@@ -22,7 +27,7 @@
     "utility",
     "reusable"
   ],
-  "description": "A lightweight, zero-fuss way to get a single shared MongoDB connection across your Node.js codebase.",
+  "description": "Zero-config, plug-and-play MongoDB client management for Node.js: shared connections, multi-client support, Pino logging, and env/config-file resolution out of the box.",
   "license": "MIT",
   "author": {
     "name": "Ross Libby",
@@ -35,28 +40,34 @@
     "url": "git+https://github.com/rosslibby/mongo-singleton.git"
   },
   "scripts": {
-    "build:cjs": "tsc -p tsconfig.cjs.json",
-    "build:esm": "tsc -p tsconfig.esm.json",
-    "build": "yarn build:cjs && yarn build:esm",
-    "dev": "nodemon --exec ts-node src/index.ts",
-    "prepare": "ts-node prepare-package.ts"
+    "build": "tsup && yarn build:types",
+    "build:types": "tsc --emitDeclarationOnly --noEmit false",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "dev": "tsx watch src/index.ts",
+    "prepare": "yarn build"
   },
   "devDependencies": {
-    "@types/mongodb": "^4.0.7",
-    "@types/node": "^22.1.0",
-    "nodemon": "^3.1.10",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.5.4"
+    "@types/node": "^26.2.0",
+    "@vitest/coverage-v8": "4.1.10",
+    "mongodb-memory-server": "^11.2.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
-    "@notross/node-client-logger": "^0.0.2",
-    "mongodb": "^6.12.0"
+    "cosmiconfig": "^10.0.0",
+    "mongodb": "^7.5.0",
+    "pino": "^10.3.1"
   },
   "exports": {
     ".": {
-      "import": "./dist/esm/index.js",
-      "require": "./dist/cjs/index.js",
-      "types": "./dist/cjs/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
     }
   }
 }
