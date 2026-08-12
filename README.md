@@ -1,18 +1,16 @@
 # @notross/mongo-singleton
 [<img src="https://img.shields.io/npm/v/@notross/mongo-singleton" />](https://npmjs.com/package/@notross/mongo-singleton)
 
-Zero-config, plug-and-play MongoDB client management for Node.js. Point it at a connection with an env var (or nothing at all, if you've got a config file), and import `collection`/`db` straight from the package root — no `init()` call required.
+Zero-config, lazy-loading MongoDB client for Node.js. Configures automatically via environment variables and exposes top-level db and collection helpers for instant, zero-boilerplate database access.
 
 ## Key Features
-- ✅ **Zero-config**: reads `MONGO_URI`/`MONGO_DATABASE` (or a config file) automatically — no boilerplate to get started
-- ✅ Works with connection URIs, structured connection parts, or `MongoClientOptions`
-- ✅ Support for multiple named, independently-configured connections (`getConnection`)
-- ✅ One connection serves many databases — no need for a second connection just to reach a second database on the same cluster
-- ✅ Everything is lazy: clients aren't constructed until first use, and the driver connects on first operation
-- ✅ `collection()` works as a direct call, an `await`-to-value, or a `.then()` chain — whichever reads best at the call site
-- ✅ [Pino](https://getpino.io) logging — bring your own logger, or get a sane default
-- ✅ TypeScript support, including generic `collection<T>(name)`
-- ✅ Direct access to `db` and `collection` helpers from the package root
+- ⚡ **Lazy & Top-Level Access:** Clients initialize on first call with `db` and `collection` exported directly from the package root
+- 🛠️ **Zero-Config Defaults:** Automatically resolves `MONGO_URI` / `MONGO_DATABASE` (or a config file) with zero setup required
+- 🔀 **Flexible Connection Setup:** Supports full URIs, structured connection params, or custom `MongoClientOptions`
+- 🗄️ **Multi-Database & Multi-Connection:** Switch databases on a single cluster without extra connections, or manage multiple named isolated connections via `getConnection()`
+- 🎯 **Flexible Call Patterns:** Call `collection()` directly, `await` it, or chain `.then()` — whichever fits your call site best
+- 📐 **First-Class TypeScript:** Full type safety with generic `collection<T>(name)` support out of the box
+- 🪵 **[Pino](https://getpino.io) Logging:** Plug in your own Pino logger or rely on sensible, built-in defaults
 
 ## Installation
 
@@ -35,146 +33,193 @@ MONGO_URI="mongodb://localhost:27017/myApp"
 ```ts
 import { collection } from '@notross/mongo-singleton';
 
-// all three of these are equivalent — use whichever reads best:
+// 1. One-shot query
 const user = await collection('users').findOne({ email: 'john.doe@gmail.com' });
 
+// 2. Reuse the collection handle
 const users = await collection('users');
 const sameUser = await users.findOne({ email: 'john.doe@gmail.com' });
 
+// 3. Chainable in non-async functions
 const getUserByEmail = (email: string) =>
   collection('users').then((users) => users.findOne({ email }));
 ```
 
-No `init()`, no `connect()`. If `MONGO_URI` includes a database path (as above), you don't even need a separate `MONGO_DATABASE` — it's pulled from the URI. Set both explicitly if you'd rather keep them separate:
+## Connection & database defaults
+
+If `MONGO_URI` includes a database path (as shown above), it's parsed automatically. If you prefer to keep them separate:
 
 ```bash
 MONGO_URI="mongodb://localhost:27017"
 MONGO_DATABASE="myApp"
 ```
 
-`MONGODB_URI` / `MONGO_URL` and `MONGODB_DATABASE` are also recognized, to match common hosting-provider conventions.
+> Hosting Platform Fallbacks: `MONGODB_URI`, `MONGO_URL`, and `MONGODB_DATABASE` are also recognized automatically to support standard platform conventions (Vercel, Heroku, Railway, etc.).
 
-If nothing is configured anywhere, the first `collection()`/`db()`/`connect()` call throws a clear error telling you what to set — never a silent connection to `localhost` or the driver's own `test` database default.
+> Fail-Safe Guard: If no configuration is detected, the first `collection()`, `db()`, or `connect()` call throws an explicit error immediately. It will never silently default to `localhost` or the driver's default `test` database.
 
-Prefer to configure it from code instead of the environment? One call, at boot:
+## Programmatic configuration
+
+Prefer configuring via code instead of environment variables? Call `configureMongoSingleton` once at application boot:
 
 ```ts
 import { configureMongoSingleton } from '@notross/mongo-singleton';
 
-configureMongoSingleton({ connection: process.env.MONGO_URI, database: 'myApp' });
+configureMongoSingleton({
+  connection: process.env.MY_CUSTOM_MONGO_CONNECTION_STRING,
+  database: 'myApp',
+});
 ```
 
-## Configuration precedence
+## Configuration Precedence
 
-For a given setting, highest wins:
+For any setting, configuration is resolved in the following order (highest priority wins):
 
-1. **Explicit code** — `configureMongoSingleton({...})` / `new MongoSingleton({...})` / `mongoClient.init({...})`. Always available, always wins.
-2. **Environment variables** — `MONGO_URI` / `MONGODB_URI` / `MONGO_URL`, `MONGO_DATABASE` / `MONGODB_DATABASE`.
-3. **Config file** — see below. A checked-in file is a repo default; it deliberately can't override an env var injected by your deploy environment.
-4. **The connection URI's own path** — `mongodb://host/myApp` supplies `myApp` as the database if nothing else did.
+1. **Explicit Code** — `configureMongoSingleton(...)` or `getConnection(...)` overrides everything
+2. **Environment Variables** — `MONGO_URI` / `MONGODB_URI` / `MONGO_URL` and `MONGO_DATABASE` / `MONGODB_DATABASE`
+3. **Config File** — A local or checked-in config file acts as a repo fallback and will never override an environment variable injected by your hosting environment
+4. **URI Database Path** — A database name embedded in the URI path (e.g., `mongodb://host/myApp`) supplies the database name if no explicit database key is set above
 
 ## Config file
 
-Optional. Powered by [cosmiconfig](https://github.com/cosmiconfig/cosmiconfig), so any of these work: a `mongoSingleton` key in `package.json`, `.mongosingletonrc(.json|.yaml|.yml|.js|.cjs)`, or `mongosingleton.config.(js|cjs)`.
+Optional. Powered by [cosmiconfig](https://github.com/cosmiconfig/cosmiconfig), you can specify settings in any standard config format:
 
 ```js
 // mongosingleton.config.js
 module.exports = {
-  uri: process.env.MONGO_URI,      // default (unnamed) connection
-  database: 'myApp',
-  clients: {                       // named connections — see below
-    analytics: { uri: process.env.ANALYTICS_MONGO_URI, database: 'events' },
+  uri: process.env.MONGO_URI, // Default connection URI
+  database: 'myApp',         // Default database name
+  clients: {                  // Named secondary connections
+    analytics: {
+      uri: process.env.ANALYTICS_MONGO_URI,
+      database: 'events',
+    },
   },
 };
 ```
 
 ## Using multiple connections
 
-Two options if your app needs more than one distinct MongoDB connection.
+If your app needs to connect to multiple distinct MongoDB clusters, choose between these two approaches:
 
-#### Option A: Create your own instances
+#### Option A: Named Connection Registry (`getConnection`)
 
-```ts
-import { MongoSingleton } from '@notross/mongo-singleton';
+`getConnection` maintains a global registry, ensuring a single shared instance per connection ID across your app.
 
-export const clientA = new MongoSingleton({ connection: process.env.URI_A, database: 'dbA' });
-export const clientB = new MongoSingleton({ connection: process.env.URI_B, database: 'dbB' });
-```
-
-#### Option B: `getConnection` registry
-
-`getConnection` ensures a single instance per connection ID across your app. With a `clients` map in a config file (above), it needs no code-side setup at all:
+When defined in your config file (`clients: { analytics: { ... } }`), you can access named connections anywhere with zero setup:
 
 ```ts
 import { getConnection } from '@notross/mongo-singleton';
 
-const { collection } = getConnection('analytics'); // resolves from config file — zero args needed
+// Resolves automatically from config file or MONGO_ANALYTICS_URI
+const { collection } = getConnection('analytics');
 const events = await collection('events').find().toArray();
 ```
 
-Or pass options explicitly:
+You can also pass explicit options during setup:
 
 ```ts
-getConnection('client-a', { connection: process.env.URI_A, database: 'dbA' });
-getConnection('client-b', { connection: process.env.URI_B, database: 'dbB' });
+// Configure once
+getConnection('analytics', { 
+  connection: process.env.ANALYTICS_URI, 
+  database: 'events' 
+});
 
-// elsewhere
-const { collection } = getConnection('client-a');
-const account = await collection('accounts').findOne({ email, password });
+// Access anywhere else
+const { collection } = getConnection('analytics');
+const account = await collection('accounts').findOne({ id: 123 });
 ```
 
-Named connections also get a per-id environment override, independent of any config file: `MONGO_<ID>_URI` / `MONGO_<ID>_DATABASE` (id upper-cased, non-alphanumerics collapsed to `_`) — e.g. `getConnection('analytics')` reads `MONGO_ANALYTICS_URI` if set.
+> **Automatic Environment Overrides:** Named connections automatically map to upper-cased environment variables. For example, `getConnection('analytics')` checks `MONGO_ANALYTICS_URI` and `MONGO_ANALYTICS_DATABASE` before falling back to your config file.
 
-> A second `getConnection('client-a', {...})` call does not overwrite an already-created connection. To reconfigure, call `client.init(...)` on the handle's `client` — unlike in v2, this now actually rebuilds the underlying connection.
+#### Option B: Instantiate `MongoSingleton` Directly
+
+For completely isolated instances that bypass the global registry, instantiate `MongoSingleton` directly:
 
 ```ts
-const { client } = getConnection('client-a');
-client.init({ connection: '...', database: '...' });
+import { MongoSingleton } from '@notross/mongo-singleton';
+
+export const primaryClient = new MongoSingleton({ 
+  connection: process.env.PRIMARY_URI, 
+  database: 'app' 
+});
+
+export const analyticsClient = new MongoSingleton({ 
+  connection: process.env.ANALYTICS_URI, 
+  database: 'events' 
+});
+
+// Usage
+const user = await primaryClient.collection('users').findOne({ id: 1 });
 ```
 
-> Note on naming: `getConnection` returns a `{ client, collection, db }` handle. `client` there is the underlying `MongoSingleton`/driver-managed connection — not a per-database accessor. If you only need to read/write documents, you'll almost always destructure just `collection`/`db` and never touch `client` directly.
+## Key Handle Exports
+`getConnection('name')` returns a `{ collection, db, client }` handle:
 
-## One connection, many databases
+- `collection` & `db`: High-level lazy accessors (what you will use 99% of the time).
+- `client`: The underlying `MongoSingleton` instance, used for low-level connection lifecycle management or direct driver access.
 
-A single `MongoClient` can safely serve multiple databases on the same cluster — no new sockets required. `database` is just the *default* for a given instance; override it per call:
+## One Connection, Many Databases
+
+A single `MongoClient` can safely serve multiple databases on the same cluster—no extra sockets required. The `database` parameter acts as the default for an instance and can be overridden per call:
 
 ```ts
-const client = new MongoSingleton({ connection: process.env.MONGO_URI });
+import { collection, db } from '@notross/mongo-singleton';
 
-client.collection('users');                              // uses the default database
-client.collection('events', { database: 'analytics' });  // same connection, different db
+// Uses the default database from environment / config
+const defaultUsers = await collection('users');
+
+// Targets a different database using the same connection pool
+const analyticsEvents = await collection('events', { database: 'analytics' });
+const analyticsDb = db('analytics');
 ```
+
+---
 
 ## Logging
 
-Backed by [Pino](https://getpino.io). Bring your app's own logger (or a `.child(...)` of it) so every `MongoSingleton` instance logs through the same sink your app already uses:
+Powered by [Pino](https://getpino.io). Pass your application's existing Pino logger (or a `.child()` logger) so every database log flows through your primary log sink:
 
 ```ts
 import pino from 'pino';
 import { MongoSingleton } from '@notross/mongo-singleton';
 
-const logger = pino();
-const client = new MongoSingleton({ connection: process.env.MONGO_URI, logger });
+const logger = pino({ level: 'debug' });
+
+const client = new MongoSingleton({
+  connection: process.env.MONGO_URI,
+  logger,
+});
 ```
 
-Omit `logger` to get a shared default Pino instance (level from `LOG_LEVEL`, defaulting to `info`), or pass `logger: false` to disable logging for that instance entirely. Each instance gets its own logger reference — configuring one connection's logging never affects another's.
+* **Default Behavior**: Omitting `logger` uses a shared internal Pino instance (respects `LOG_LEVEL` environment variable, defaulting to `info`).
+* **Disable Logging**: Pass `logger: false` to disable logging entirely for that instance.
+* **Instance Isolation**: Logger settings are scoped per instance and will never mutate other connections.
 
-## Graceful shutdown
+---
 
-Optional, opt-in — call once at boot if you want it:
+## Graceful Shutdown
+
+To automatically handle process termination signals, register shutdown hooks during application boot:
 
 ```ts
 import { registerShutdown } from '@notross/mongo-singleton';
 
-registerShutdown(); // closes every getConnection()-registered client + the root client on SIGINT/SIGTERM
+// Closes all getConnection() registries and the default root client on SIGINT / SIGTERM
+registerShutdown();
 ```
+
+---
 
 ## API Reference
 
 ### `MongoSingleton`
+
 ```ts
 new MongoSingleton(opts?: MongoSingletonOptions);
 ```
+
+#### Types
 
 ```ts
 type MongoSingletonOptions = {
@@ -200,28 +245,40 @@ type ConnectionProps = {
 type SparseConnectionProps = { uri: string };
 ```
 
-Methods:
-- `init(opts)` – (Re)initialize — covers both first-time setup and reconfiguration. Safe to call more than once; rebuilds the connection each time.
-- `collection<T>(name, opts?)` – Typed, dual-mode collection handle (see call styles above). `opts.database` overrides the instance default.
-- `db(database?)` – `Db` handle for `database`, or the instance default.
-- `connect()` – Explicitly wait for a connection (not required before `collection()`/`db()` — the driver connects lazily on first operation). Useful for pre-warming at boot or wiring status logging.
-- `disconnect()` – Closes the connection and resets state so the next call lazily reconnects.
-- `client` – The underlying `mongodb.MongoClient`, created lazily on first access.
-- `status` / `error` – Current `'disconnected' | 'connecting' | 'connected' | 'error'` and the last error, if any.
+#### Instance Methods & Properties
 
-### Root exports
+* **`collection<T>(name, opts?)`**: Returns a dual-mode collection proxy. Supports direct access, `await`, or `.then()` chaining. Set `opts.database` to target a different database on the same connection.
+* **`db(database?)`**: Returns a `Db` instance for the specified database or falls back to the instance default.
+* **`connect()`**: Explicitly triggers and awaits the database connection. *(Optional—connections initialize lazily on first operation).*
+* **`disconnect()`**: Closes the active driver connection and resets internal state for subsequent lazy reconnection.
+* **`client`**: Accesses the raw `mongodb.MongoClient` instance (created lazily on first access).
+* **`status`**: Current connection state: `'disconnected' | 'connecting' | 'connected' | 'error'`.
+* **`error`**: The last encountered connection error, if any.
 
-`mongoClient`, `db`, `collection`, `connect`, `configureMongoSingleton` — bound to a single zero-arg `MongoSingleton` instance, resolved lazily from env/config on first use.
+---
 
-`getConnection(id, opts?)`, `disconnectAll()`, `registerShutdown(...extraClients)`.
+### Root Exports
+
+Bound to a default `MongoSingleton` instance that lazily resolves configuration on first access:
+
+* **`collection<T>(name, opts?)`**: Top-level collection helper.
+* **`db(database?)`**: Top-level database helper.
+* **`connect()`**: Explicitly pre-warms the default connection.
+* **`configureMongoSingleton(opts)`**: Programmatically configures the root instance.
+* **`getConnection(id, opts?)`**: Retrieves or creates a named connection instance.
+* **`disconnectAll()`**: Disconnects all active named connections and the root instance.
+* **`registerShutdown(...extraClients)`**: Attaches process event listeners for graceful cleanup.
+
+---
 
 ## Migrating from v2
 
-This is a breaking release:
-- `useClient` was renamed to `getConnection` — "client" reads as a per-database accessor to some, when what's actually being registered/retrieved is a distinct connection. The returned shape is unchanged (`{ client, collection, db }`).
-- `database` moved from a required constructor field to an optional default, overridable per `collection()`/`db()` call.
-- Logging changed from a built-in custom logger (`logging`/`logLevels` on connection props) to Pino dependency injection (`logger` option). The old logger mutated a shared global instance across every client — this fixes that.
-- `init()` now actually rebuilds the underlying client — previously it silently updated internal fields but kept using the original (stale) `MongoClient`. The separate `configure(clientOptions)` method was removed as redundant (`init({ clientOptions })` covers it); use the new top-level `configureMongoSingleton(opts)` to reconfigure the default instance from code.
-- `getDb`/`connectedDb` were removed; use `await mongoClient.connect()` for the same "wait for a real connection" behavior.
-- `mongoClient.database` (a cached `Db` field) was removed in favor of `db()`/`collection()`, which support multiple databases per client.
-- `collection()` now returns a dual-mode handle (see call styles above) rather than a plain `Collection` — it's a `Proxy` around the real one, so `instanceof mongodb.Collection`, property access, and method calls all behave identically; the only observable differences are an extra frame in stack traces and the added `.then()`.
+This release introduces breaking structural and operational updates:
+
+* **`useClient` renamed to `getConnection`**: Renamed to clarify that the registry manages underlying connections rather than single-database accessors. Returns `{ client, collection, db }`.
+* **Optional Default Database**: `database` is no longer required in constructor options and can be specified or overridden per `collection()` or `db()` call.
+* **Pino Logger Injection**: Replaced the previous global logger with Pino dependency injection via the `logger` option. Logging configurations are now scoped per instance.
+* **Real Connection Rebuilding**: Calling `init()` now dismantles and rebuilds the underlying `MongoClient` connection instead of updating metadata fields over a stale socket. `configure(clientOptions)` has been removed; use `configureMongoSingleton(opts)` for root updates.
+* **Removed Legacy Methods**: `getDb` and `connectedDb` have been removed in favor of `await mongoClient.connect()`.
+* **Removed `mongoClient.database`**: Deprecated in favor of multi-database `db()` and `collection()` calls.
+* **Dual-Mode Collection Proxies**: `collection()` now returns a proxy wrapper around `mongodb.Collection`. It supports direct calls, `await`, or promise chaining while preserving standard property lookups and `instanceof mongodb.Collection` behavior.
