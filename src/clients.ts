@@ -1,93 +1,56 @@
-import {
-  InitClientProps,
-  UseClientResponse,
-} from './types';
+import { ConnectionHandle, MongoSingletonOptions } from './types';
 import { MongoSingleton } from './mongo-singleton';
+import { resolveNamedConnection } from './config';
 
-type SingletonClients = Record<string, MongoSingleton>;
+const registry = new Map<string, MongoSingleton>();
 
-class State {
-  private _clients: SingletonClients = {};
-
-  public add: (clientId: string, client: MongoSingleton) => void;
-  public set: (client: SingletonClients) => void;
-  public get: (clientId: string) => MongoSingleton | undefined;
-  public clients: SingletonClients;
-
-  constructor() {
-    this.add = this.addClient.bind(this);
-    this.set = this.setClient.bind(this);
-    this.get = this.getClient.bind(this);
-    this.clients = this._clients;
+function buildOptions(id: string, opts?: MongoSingletonOptions): MongoSingletonOptions | undefined {
+  if (opts?.connection) {
+    return opts;
   }
 
-  private addClient(clientId: string, client: MongoSingleton): void {
-    if (this._clients[clientId]) {
-      console.warn(`A client with ID ${clientId} already exists.`)
-    } else {
-      this.setClient({ [clientId]: client });
-    }
+  const resolved = resolveNamedConnection(id);
+  if (!resolved) {
+    return opts;
   }
-
-  private setClient(client: SingletonClients): void {
-    this._clients = { ...this._clients, ...client };
-    this.clients = this._clients;
-  }
-
-  public getClient(clientId: string): MongoSingleton | undefined {
-    return this._clients[clientId];
-  }
-  public getClients(): SingletonClients {
-    return this._clients;
-  }
-}
-const state = new State();
-
-class Stateful {
-  private clientId: string;
-  public client: MongoSingleton;
-  public set: (client: MongoSingleton) => void;
-  public get: () => MongoSingleton;
-
-  constructor(clientId: string, props?: InitClientProps) {
-    this.set = this.update.bind(this);
-    this.get = this.getClient.bind(this);
-    this.clientId = clientId;
-    this.client = state.get(clientId) || this.createClient(props);
-  }
-
-  private createClient(props?: InitClientProps): MongoSingleton {
-    const client = new MongoSingleton(props);
-    state.add(this.clientId, client);
-    this.update(client);
-    return client;
-  }
-
-  private getClient(): MongoSingleton {
-    return state.get(this.clientId) as MongoSingleton;
-  }
-
-  private update(
-    value: MongoSingleton | ((v: MongoSingleton) => MongoSingleton),
-  ) {
-    if (typeof value === 'function') {
-      value = value(this.getClient());
-    }
-
-    state.set({ [this.clientId]: value });
-    this.client = value;
-  }
-}
-
-export const useClient = (
-  clientId: string,
-  props?: InitClientProps,
-): UseClientResponse => {
-  const { client } = new Stateful(clientId, props);
 
   return {
-    client,
-    collection: client.collection,
-    db: client.db,
+    ...opts,
+    connection: resolved.uri,
+    database: opts?.database ?? resolved.database,
+    clientOptions: opts?.clientOptions ?? resolved.clientOptions,
   };
-};
+}
+
+/**
+ * Returns the connection registered under `id`, creating it on first call.
+ * With no `opts`, resolution falls back to a `clients.<id>` entry in a
+ * mongosingleton config file (or its `MONGO_<ID>_URI` env override), then to
+ * the same default-connection resolution used by the root client.
+ *
+ * A second call with `opts` for an already-created id does not overwrite
+ * it — call `client.init(opts)` on the returned handle's `client` to
+ * reconfigure.
+ */
+export function getConnection(id: string, opts?: MongoSingletonOptions): ConnectionHandle {
+  let client = registry.get(id);
+
+  if (!client) {
+    client = new MongoSingleton(buildOptions(id, opts));
+    registry.set(id, client);
+  } else if (opts) {
+    client.log?.warn(
+      { connectionId: id },
+      `getConnection('${id}') called again with new options; ignored — call client.init(...) to reconfigure`,
+    );
+  }
+
+  return { client, collection: client.collection, db: client.db };
+}
+
+/** Closes every connection created via `getConnection` and clears the registry. */
+export async function disconnectAll(): Promise<void> {
+  const clients = [...registry.values()];
+  registry.clear();
+  await Promise.all(clients.map((client) => client.disconnect()));
+}
